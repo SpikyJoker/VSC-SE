@@ -33,12 +33,17 @@ MergeController mergeController;
 ProjectionController projectionController;
 WelderController welderController;
 
+
+//State variables
+bool running = false
+bool direction = ""
+
 // Interfaces
 public interface IPistonController
 {
     void ExtendPiston(IMyPistonBase piston, float limit, float speed);
     void RetractPiston(IMyPistonBase piston, float speed);
-    void checkPistonExtebded(IMyPistonBase piston, float limit);
+    void IsPistonExtended(IMyPistonBase piston, float limit);
 }
 
 public interface IMergeController
@@ -185,9 +190,7 @@ int currentStep = 0;
 
 void PrintDrillSteps()
 {
- 
-    
-    switch (currentStep) //no breaks, we want to fall through for speed
+    switch (currentStep)
     {
         case 0:
             WriteToScreen("Checking if grab merge is necessary");
@@ -200,16 +203,18 @@ void PrintDrillSteps()
             {
                 currentStep++;
             }
+            break;
 
         case 1:
-            //Create drill section
+            // Create drill section
             WriteToScreen("Enable projector, and welder");
             projectionController.EnableProjector(drillProjector, true);
             welderController.ToggleWelders(welderGroup, true);
             currentStep++;
-        
+            break;
+
         case 2:
-            //Check drill section is complete
+            // Check drill section is complete
             WriteToScreen("Checking if drill section is complete");
             if (projectionController.IsProjectionComplete(conveyorProjector))
             {
@@ -221,13 +226,17 @@ void PrintDrillSteps()
                 welderController.ToggleWelders(welderGroup, false);
                 break;
             }
+            break;
+
         case 3:
-            //Extend top piston to connect drill section
+            // Extend top piston to connect drill section
             WriteToScreen("Extending top piston to connect drill section");
             pistonController.ExtendPiston(topPiston, pistonTopExtendLimit, topPistonSpeed);
             currentStep++;
+            break;
+
         case 4:
-            //Check if top piston is extended
+            // Check if top piston is extended
             WriteToScreen("Checking if top piston is extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopExtendLimit))
             {
@@ -237,34 +246,32 @@ void PrintDrillSteps()
             {
                 break;
             }
-            
-        
+            break;
+
         default:
             // Reset or move to the next state
             currentMiningState = MiningState.PrintConveyor;
             currentStep = 0;
             break;
     }
-    //this section is ran every iteration no matter what, great place for status updates and integrity checks
-
+    // This section is run every iteration no matter what, great place for status updates and integrity checks
 }
-
 
 void PrintConveyorSteps()
 {
-        switch (currentStep) //no breaks, we want to fall through for speed
+    switch (currentStep)
     {
         case 0:
             WriteToScreen("Moving all blocks to starting positions");
             pistonController.RetractPiston(topPiston, pistonRetractSpeed);
             pistonController.ExtendPiston(grabPiston, pistonGrabExtendLimit, grabPistonSpeed);
             currentStep++;
-
+            break;
 
         case 1:
-            //Check if grab piston is extended
-            WriteToScreen("Checking if pistons is extended");
-            if (pistonController.IsPistonExtended(grabPiston, pistonGrabExtendLimit) & pistonController.IsPistonExtended(topPiston, 0.0f))
+            // Check if grab piston is extended
+            WriteToScreen("Checking if pistons are extended");
+            if (pistonController.IsPistonExtended(grabPiston, pistonGrabExtendLimit) && pistonController.IsPistonExtended(topPiston, 0.0f))
             {
                 mergeController.ToggleMergeBlock(topMergeBlock, true);
                 currentStep++;
@@ -273,15 +280,17 @@ void PrintConveyorSteps()
             {
                 break;
             }
+            break;
 
         case 2:
-            //Engage grab merge block
+            // Engage grab merge block
             WriteToScreen("Ensuring grab merge block is still on");
             mergeController.ToggleMergeBlock(grabMergeBlock, true);
-            
             currentStep++;
+            break;
+
         case 3:
-            //Check if grab merge block is engaged
+            // Check if grab merge block is engaged
             WriteToScreen("Checking if grab merge block is engaged");
             if (mergeController.CheckMergeEngaged(grabMergeBlock))
             {
@@ -291,23 +300,26 @@ void PrintConveyorSteps()
             {
                 break;
             }
+            break;
 
         case 4:
-            //drill projector is off, conveyor projector is on
+            // Drill projector is off, conveyor projector is on
             WriteToScreen("Turning off drill projector and turning on conveyor projector");
             projectionController.EnableProjector(drillProjector, false);
             projectionController.EnableProjector(conveyorProjector, true);
             currentStep++;
+            break;
+
         case 5:
-            //Create drill section
+            // Create drill section
             WriteToScreen("Enable projector, and welder");
-            
             projectionController.EnableProjector(drillProjector, true);
             welderController.ToggleWelders(welderGroup, true);
             currentStep++;
-        
+            break;
+
         case 6:
-            //Check drill section is complete
+            // Check drill section is complete
             WriteToScreen("Checking if conveyor section is complete");
             if (projectionController.IsProjectionComplete(conveyorProjector))
             {
@@ -319,13 +331,17 @@ void PrintConveyorSteps()
                 welderController.ToggleWelders(welderGroup, false);
                 break;
             }
+            break;
+
         case 7:
-            //Extend top piston to connect drill section
+            // Extend top piston to connect drill section
             WriteToScreen("Extending top piston to connect drill section");
             pistonController.ExtendPiston(topPiston, pistonTopConnectLimit, drillPistonSpeed);
             currentStep++;
+            break;
+
         case 8:
-            //Check if top piston is extended
+            // Check if top piston is extended
             WriteToScreen("Waiting for top piston to be extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopConnectLimit))
             {
@@ -335,19 +351,24 @@ void PrintConveyorSteps()
             {
                 break;
             }
-            
+            break;
+
         case 9:
-            //Disconnect grab merge block
+            // Disconnect grab merge block
             WriteToScreen("Disengaging grab merge block");
             mergeController.ToggleMergeBlock(grabMergeBlock, false);
             currentStep++;
+            break;
+
         case 10:
-            //Extend top piston deeper
+            // Extend top piston deeper
             WriteToScreen("Extending top piston deeper");
             pistonController.ExtendPiston(topPiston, pistonTopExtendLimit, topPistonSpeed);
             currentStep++;
+            break;
+
         case 11:
-            //Check if top piston is extended
+            // Check if top piston is extended
             WriteToScreen("Checking if top piston is extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopExtendLimit))
             {
@@ -357,19 +378,22 @@ void PrintConveyorSteps()
             {
                 break;
             }
+            break;
+
         case 12:
-            //Reconnect grab merge
+            // Reconnect grab merge
             WriteToScreen("Reconnecting grab merge block");
             mergeController.ToggleMergeBlock(grabMergeBlock, true);
             currentStep++;
+            break;
+
         default:
             // Reset or move to the next state
             currentMiningState = MiningState.PrintConveyor;
             currentStep = 0;
             break;
     }
-    //this section is ran every iteration no matter what, great place for status updates and integrity checks
-
+    // This section is run every iteration no matter what, great place for status updates and integrity checks
 }
 
 // Main Entry Point
@@ -392,4 +416,47 @@ public void Main(string argument)
 public Program()
 {
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
+}
+
+
+// Helper Methods
+void WriteToScreen(string message)
+{
+    int maxLines = 23; // Maximum number of lines to display on the LCD
+    string statusText = $"Running: {running}\nDirection: {direction}\n"; // Status lines for the top of the screen
+
+    if (lcdScreen != null)
+    {
+        // Reset the screen if the message is "reset"
+        if (message == "reset")
+        {
+            lcdScreen.WriteText(statusText, false); // Clear and add only status lines
+        }
+        else
+        {
+            // Retrieve current text without the status lines
+            string currentText = lcdScreen.GetText();
+            var lines = currentText.Split(new[] { '\n' }, StringSplitOptions.None).Skip(3).ToList();
+
+            // If there are more lines than maxLines - 3 (account for status lines), remove the oldest lines
+            if (lines.Count >= maxLines - 3)
+            {
+                lines = lines.Skip(lines.Count - (maxLines - 3) + 1).ToList();
+            }
+
+            // Add the new message to the log
+            if (!string.IsNullOrEmpty(message))
+            {
+                lines.Add(message);
+            }
+
+            // Combine status lines and message log
+            string updatedText = statusText + string.Join("\n", lines);
+            lcdScreen.WriteText(updatedText);
+        }
+    }
+    else
+    {
+        Echo("LCD Screen is not initialized."); // Debugging statement
+    }
 }
