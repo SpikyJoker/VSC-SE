@@ -1,4 +1,3 @@
-
 // Component Names and Settings
 string topPistonName = "[MINE] Piston Top";
 string grabPistonName = "[MINE] Piston Grab";
@@ -21,7 +20,7 @@ float drillPistonSpeed = 0.1f;
 IMyPistonBase topPiston;
 IMyPistonBase grabPiston;
 IMyBlockGroup welderGroup;
-IMyProjector drillprojector;
+IMyProjector drillProjector;
 IMyProjector conveyorProjector;
 IMyShipMergeBlock topMergeBlock;
 IMyShipMergeBlock grabMergeBlock;
@@ -33,17 +32,20 @@ MergeController mergeController;
 ProjectionController projectionController;
 WelderController welderController;
 
+//Simplifying variables
+string errorMessage = "";
+
 
 //State variables
-bool running = false
-bool direction = ""
+Program.MiningState currentState = Program.MiningState.Idle;
+int currentStep = 0;
 
 // Interfaces
 public interface IPistonController
 {
     void ExtendPiston(IMyPistonBase piston, float limit, float speed);
     void RetractPiston(IMyPistonBase piston, float speed);
-    void IsPistonExtended(IMyPistonBase piston, float limit);
+    bool IsPistonExtended(IMyPistonBase piston, float limit);
 }
 
 public interface IMergeController
@@ -86,11 +88,16 @@ public class PistonController : IPistonController
         piston.Velocity = -speed;
         _program.WriteToScreen($"Retracting piston {piston.CustomName} at {speed}m/s");
     }
-    public void IsPistonExtended(IMyPistonBase piston, float limit)
+    public bool IsPistonExtended(IMyPistonBase piston, float limit)
     {
         if (piston.CurrentPosition == limit)
         {
             _program.WriteToScreen($"Piston {piston.CustomName} is extended");
+            return true;
+        }
+        else
+        {
+            return false;
         }
     }
 }
@@ -103,7 +110,6 @@ public class MergeController : IMergeController
     {
         _program = program;
     }
-
     public bool CheckMergeEngaged(IMyShipMergeBlock mergeBlock)
     {
         bool engaged = !mergeBlock.IsConnected;
@@ -185,19 +191,18 @@ enum MiningState
     PrintConveyor
 }
 
-MiningState currentMiningState = MiningState.Idle;
-int currentStep = 0;
-
-void PrintDrillSteps()
+void PrintDrillSteps(Program program)
 {
+    Echo("1");
     switch (currentStep)
     {
         case 0:
-            WriteToScreen("Checking if grab merge is necessary");
+            program.WriteToScreen("Checking if grab merge is necessary");
+            Echo("0. Checking if grab merge is necessary");
             // Check if the grab merge has already been engaged and therefore the drill doesn't need to be printed
-            if (mergeController.IsMergeBlockEngaged(grabMergeBlock))
+            if (mergeController.CheckMergeEngaged(grabMergeBlock))
             {
-                currentMiningState = MiningState.PrintConveyor;
+                currentState = MiningState.PrintConveyor;
             }
             else
             {
@@ -207,7 +212,8 @@ void PrintDrillSteps()
 
         case 1:
             // Create drill section
-            WriteToScreen("Enable projector, and welder");
+            program.WriteToScreen("Enable projector, and welder");
+            Echo("1. Enable projector, and welder");
             projectionController.EnableProjector(drillProjector, true);
             welderController.ToggleWelders(welderGroup, true);
             currentStep++;
@@ -215,7 +221,8 @@ void PrintDrillSteps()
 
         case 2:
             // Check drill section is complete
-            WriteToScreen("Checking if drill section is complete");
+            program.WriteToScreen("Checking if drill section is complete");
+            Echo("2. Checking if drill section is complete");
             if (projectionController.IsProjectionComplete(conveyorProjector))
             {
                 currentStep++;
@@ -230,14 +237,16 @@ void PrintDrillSteps()
 
         case 3:
             // Extend top piston to connect drill section
-            WriteToScreen("Extending top piston to connect drill section");
+            program.WriteToScreen("Extending top piston to connect drill section");
+            Echo("3. Extending top piston to connect drill section");
             pistonController.ExtendPiston(topPiston, pistonTopExtendLimit, topPistonSpeed);
             currentStep++;
             break;
 
         case 4:
             // Check if top piston is extended
-            WriteToScreen("Checking if top piston is extended");
+            program.WriteToScreen("Checking if top piston is extended");
+            Echo("4. Checking if top piston is extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopExtendLimit))
             {
                 currentStep++;
@@ -250,19 +259,21 @@ void PrintDrillSteps()
 
         default:
             // Reset or move to the next state
-            currentMiningState = MiningState.PrintConveyor;
+            currentState = MiningState.PrintConveyor;
             currentStep = 0;
             break;
     }
     // This section is run every iteration no matter what, great place for status updates and integrity checks
 }
 
-void PrintConveyorSteps()
+void PrintConveyorSteps(Program program)
 {
+    Echo("Printing conveyor steps");
     switch (currentStep)
     {
         case 0:
-            WriteToScreen("Moving all blocks to starting positions");
+            program.WriteToScreen("Moving all blocks to starting positions");
+            Echo("0. Moving all blocks to starting positions");
             pistonController.RetractPiston(topPiston, pistonRetractSpeed);
             pistonController.ExtendPiston(grabPiston, pistonGrabExtendLimit, grabPistonSpeed);
             currentStep++;
@@ -270,8 +281,9 @@ void PrintConveyorSteps()
 
         case 1:
             // Check if grab piston is extended
-            WriteToScreen("Checking if pistons are extended");
-            if (pistonController.IsPistonExtended(grabPiston, pistonGrabExtendLimit) && pistonController.IsPistonExtended(topPiston, 0.0f))
+            program.WriteToScreen("Checking if pistons are extended");
+            Echo("1. Checking if pistons are extended");
+            if (pistonController.IsPistonExtended(grabPiston, pistonGrabExtendLimit) & pistonController.IsPistonExtended(topPiston, 0.0f))
             {
                 mergeController.ToggleMergeBlock(topMergeBlock, true);
                 currentStep++;
@@ -284,27 +296,29 @@ void PrintConveyorSteps()
 
         case 2:
             // Engage grab merge block
-            WriteToScreen("Ensuring grab merge block is still on");
+            program.WriteToScreen("Ensuring grab merge block is still on");
+            Echo("2. Ensuring grab merge block is still on");
             mergeController.ToggleMergeBlock(grabMergeBlock, true);
             currentStep++;
             break;
 
         case 3:
             // Check if grab merge block is engaged
-            WriteToScreen("Checking if grab merge block is engaged");
-            if (mergeController.CheckMergeEngaged(grabMergeBlock))
+            program.WriteToScreen("Checking if grab merge block is engaged");
+            Echo("3. Checking if grab merge block is engaged");
+
+            var engaged = mergeController.CheckMergeEngaged(grabMergeBlock);
+            Echo ("engaged: " + engaged.ToString());
+            if (engaged)
             {
                 currentStep++;
-            }
-            else
-            {
-                break;
             }
             break;
 
         case 4:
             // Drill projector is off, conveyor projector is on
-            WriteToScreen("Turning off drill projector and turning on conveyor projector");
+            program.WriteToScreen("Turning off drill projector and turning on conveyor projector");
+            Echo("4. Turning off drill projector and turning on conveyor projector");
             projectionController.EnableProjector(drillProjector, false);
             projectionController.EnableProjector(conveyorProjector, true);
             currentStep++;
@@ -312,7 +326,8 @@ void PrintConveyorSteps()
 
         case 5:
             // Create drill section
-            WriteToScreen("Enable projector, and welder");
+            program.WriteToScreen("Enable projector, and welder");
+            Echo("5.Enable projector, and welder");
             projectionController.EnableProjector(drillProjector, true);
             welderController.ToggleWelders(welderGroup, true);
             currentStep++;
@@ -320,7 +335,8 @@ void PrintConveyorSteps()
 
         case 6:
             // Check drill section is complete
-            WriteToScreen("Checking if conveyor section is complete");
+            program.WriteToScreen("Checking if conveyor section is complete");
+            Echo("6.Checking if conveyor section is complete");
             if (projectionController.IsProjectionComplete(conveyorProjector))
             {
                 currentStep++;
@@ -335,14 +351,16 @@ void PrintConveyorSteps()
 
         case 7:
             // Extend top piston to connect drill section
-            WriteToScreen("Extending top piston to connect drill section");
+            program.WriteToScreen("Extending top piston to connect drill section");
+            Echo("7.Extending top piston to connect drill section");
             pistonController.ExtendPiston(topPiston, pistonTopConnectLimit, drillPistonSpeed);
             currentStep++;
             break;
 
         case 8:
             // Check if top piston is extended
-            WriteToScreen("Waiting for top piston to be extended");
+            program.WriteToScreen("Waiting for top piston to be extended");
+            Echo("8. Waiting for top piston to be extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopConnectLimit))
             {
                 currentStep++;
@@ -355,21 +373,24 @@ void PrintConveyorSteps()
 
         case 9:
             // Disconnect grab merge block
-            WriteToScreen("Disengaging grab merge block");
+            program.WriteToScreen("Disengaging grab merge block");
+            Echo("9. Disengaging grab merge block");
             mergeController.ToggleMergeBlock(grabMergeBlock, false);
             currentStep++;
             break;
 
         case 10:
             // Extend top piston deeper
-            WriteToScreen("Extending top piston deeper");
+            program.WriteToScreen("Extending top piston deeper");
+            Echo("10. Extending top piston deeper");
             pistonController.ExtendPiston(topPiston, pistonTopExtendLimit, topPistonSpeed);
             currentStep++;
             break;
 
         case 11:
             // Check if top piston is extended
-            WriteToScreen("Checking if top piston is extended");
+            program.WriteToScreen("Checking if top piston is extended");
+            Echo("11. Checking if top piston is extended");
             if (pistonController.IsPistonExtended(topPiston, pistonTopExtendLimit))
             {
                 currentStep++;
@@ -382,14 +403,15 @@ void PrintConveyorSteps()
 
         case 12:
             // Reconnect grab merge
-            WriteToScreen("Reconnecting grab merge block");
+            program.WriteToScreen("Reconnecting grab merge block");
+            Echo("12. Reconnecting grab merge block");
             mergeController.ToggleMergeBlock(grabMergeBlock, true);
             currentStep++;
             break;
 
         default:
             // Reset or move to the next state
-            currentMiningState = MiningState.PrintConveyor;
+            currentState = MiningState.PrintConveyor;
             currentStep = 0;
             break;
     }
@@ -397,18 +419,47 @@ void PrintConveyorSteps()
 }
 
 // Main Entry Point
-public void Main(string argument)
+public void Main(string argument, UpdateType updateSource)
 {
-    switch (MiningState)
+    WriteToScreen("looped again");
+    // Check if the script wasn't run by an update
+    if ((updateSource & UpdateType.Update100) == 0)
+    {
+        if (argument == "pause")
+        {
+            currentState = MiningState.Idle;
+        }
+        else if (argument == "drill")
+        {
+            if (mergeController.CheckMergeEngaged(grabMergeBlock)) // check drill is attached
+            {
+                currentState = MiningState.PrintDrill;
+            }
+            else
+            {
+                currentState = MiningState.PrintConveyor;
+            }
+        }
+        else if (argument == "retract")
+        {
+            currentState = MiningState.PrintConveyor;
+        }
+        else
+        {
+            WriteToScreen("Invalid argument");
+            currentState = MiningState.Idle;
+        }
+    }
+
+    switch (currentState)
     {
         case MiningState.Idle:
             break;
-        case MiningState.Initialize:
-            pistonLeft.Velocity = 0.1f;
-
         case MiningState.PrintDrill:
+            PrintDrillSteps(this);
             break;
         case MiningState.PrintConveyor:
+            PrintConveyorSteps(this);
             break;
     }
 }
@@ -416,14 +467,74 @@ public void Main(string argument)
 public Program()
 {
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
+    try
+    {
+        topPiston = GridTerminalSystem.GetBlockWithName(topPistonName) as IMyPistonBase;
+        Echo($"Top Piston: {(topPiston != null ? "found" : "not found")}");
+        if (topPiston == null) throw new Exception("Top Piston not found.");
+
+        grabPiston = GridTerminalSystem.GetBlockWithName(grabPistonName) as IMyPistonBase;
+        Echo($"Grab Piston: {(grabPiston != null ? "found" : "not found")}");
+        if (grabPiston == null) throw new Exception("Grab Piston not found.");
+
+        welderGroup = GridTerminalSystem.GetBlockGroupWithName(welderGroupName);
+        Echo($"Welder Group: {(welderGroup != null ? "found" : "not found")}");
+        if (welderGroup == null) throw new Exception("Welder Group not found.");
+
+        drillProjector = GridTerminalSystem.GetBlockWithName(drillProjectorName) as IMyProjector;
+        Echo($"Drill Projector: {(drillProjector != null ? "found" : "not found")}");
+        if (drillProjector == null) throw new Exception("Drill Projector not found.");
+
+        conveyorProjector = GridTerminalSystem.GetBlockWithName(conveyorProjectorName) as IMyProjector;
+        Echo($"Conveyor Projector: {(conveyorProjector != null ? "found" : "not found")}");
+        if (conveyorProjector == null) throw new Exception("Conveyor Projector not found.");
+
+        topMergeBlock = GridTerminalSystem.GetBlockWithName(topMergeBlockName) as IMyShipMergeBlock;
+        Echo($"Top Merge Block: {(topMergeBlock != null ? "found" : "not found")}");
+        if (topMergeBlock == null) throw new Exception("Top Merge Block not found.");
+
+        grabMergeBlock = GridTerminalSystem.GetBlockWithName(grabMergeBlockName) as IMyShipMergeBlock;
+        Echo($"Grab Merge Block: {(grabMergeBlock != null ? "found" : "not found")}");
+        if (grabMergeBlock == null) throw new Exception("Grab Merge Block not found.");
+
+        lcdScreen = GridTerminalSystem.GetBlockWithName(lcdScreenName) as IMyTextPanel;
+        Echo($"LCD Screen: {(lcdScreen != null ? "found" : "not found")}");
+        if (lcdScreen == null) throw new Exception("LCD Screen not found.");
+    }
+    catch (Exception e)
+    {
+        errorMessage = "System could not be initialized: " + e.Message;
+        WriteToScreen(errorMessage);
+        Echo(errorMessage); // Echo the error message to the console for debugging
+        return; // Stop further execution if initialization fails
+    }
+
+
+    pistonController = new PistonController(this);
+    Echo($"PistonController initialized: {pistonController != null}");
+
+    mergeController = new MergeController(this);
+    Echo($"MergeController initialized: {mergeController != null}");
+
+    projectionController = new ProjectionController(this);
+    Echo($"ProjectionController initialized: {projectionController != null}");
+
+    welderController = new WelderController(this);
+    Echo($"WelderController initialized: {welderController != null}");
+
+
+    // Proceed only if all blocks were found
+    WriteToScreen("reset");
 }
 
 
 // Helper Methods
 void WriteToScreen(string message)
 {
+    lcdScreen = GridTerminalSystem.GetBlockWithName(lcdScreenName) as IMyTextPanel;
+    
     int maxLines = 23; // Maximum number of lines to display on the LCD
-    string statusText = $"Running: {running}\nDirection: {direction}\n"; // Status lines for the top of the screen
+    string statusText = $"State: {currentState}\n\n\n"; // Status lines for the top of the screen
 
     if (lcdScreen != null)
     {
@@ -438,10 +549,10 @@ void WriteToScreen(string message)
             string currentText = lcdScreen.GetText();
             var lines = currentText.Split(new[] { '\n' }, StringSplitOptions.None).Skip(3).ToList();
 
-            // If there are more lines than maxLines - 3 (account for status lines), remove the oldest lines
-            if (lines.Count >= maxLines - 3)
+            // If there are more lines than maxLines - 2 (account for status lines), remove the oldest lines
+            if (lines.Count >= maxLines - 2)
             {
-                lines = lines.Skip(lines.Count - (maxLines - 3) + 1).ToList();
+                lines = lines.Skip(lines.Count - (maxLines - 2) + 1).ToList();
             }
 
             // Add the new message to the log
